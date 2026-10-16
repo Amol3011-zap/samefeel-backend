@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import PulseCheckIn
 from app.services.client_ip import get_client_ip
+from app.services.security_log import log_event
 from app.services.ip_geolocation import lookup as geolocate_ip
 from app.services.iso_countries import ISO_3166_1_ALPHA2
 from app.services.pulse_aggregation import (
@@ -50,11 +51,15 @@ RATE_LIMIT = 5
 RATE_WINDOW = timedelta(minutes=10)
 
 
-def _check_rate_limit(ip: str):
+def _check_rate_limit(db: Session, ip: str, user_agent: str):
     now = datetime.utcnow()
     cutoff = now - RATE_WINDOW
     _rate_store[ip] = [t for t in _rate_store[ip] if t > cutoff]
     if len(_rate_store[ip]) >= RATE_LIMIT:
+        log_event(
+            db, "rate_limit_exceeded", ip_address=ip, user_agent=user_agent,
+            extra_data={"endpoint": "pulse_checkin"},
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many check-ins. Please wait a few minutes and try again.",
@@ -124,7 +129,8 @@ async def submit_checkin(
     db: Session = Depends(get_db),
 ):
     ip = get_client_ip(request)
-    _check_rate_limit(ip)
+    user_agent = request.headers.get("user-agent", "")
+    _check_rate_limit(db, ip, user_agent)
 
     # IP-based geolocation is authoritative when it succeeds (it doesn't
     # depend on the visitor's browser language matching their actual

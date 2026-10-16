@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 from app.config import get_allowed_origins
 from app.database import get_db
 from app.models import VisitorAnalytics
+from app.services.client_ip import get_client_ip
+from app.services.security_log import log_event
 
 router = APIRouter()
 
@@ -77,9 +79,17 @@ class VisitorSessionUpdate(BaseModel):
 @router.post("/session/start")
 def start_visitor_session(data: VisitorSessionCreate, request: Request, response: Response, db: Session = Depends(get_db)):
     """Record the start of an anonymous visitor session."""
-    if not _is_allowed_origin(request.headers.get("origin")):
-        # Disallowed Origin: no error page, no write, no information leak —
-        # just a bare 204 so a forged/foreign caller learns nothing.
+    origin = request.headers.get("origin")
+    if not _is_allowed_origin(origin):
+        # Disallowed Origin: no error page, no write, no information leak
+        # back to the caller — just a bare 204 so a forged/foreign caller
+        # learns nothing. We still log it server-side so a pattern of
+        # forged-origin traffic is visible.
+        log_event(
+            db, "forged_origin_blocked", ip_address=get_client_ip(request),
+            user_agent=request.headers.get("user-agent", ""),
+            extra_data={"endpoint": "analytics_session_start", "origin": origin},
+        )
         response.status_code = 204
         return None
 
@@ -116,7 +126,13 @@ def start_visitor_session(data: VisitorSessionCreate, request: Request, response
 @router.post("/session/update")
 def update_visitor_session(data: VisitorSessionUpdate, request: Request, response: Response, db: Session = Depends(get_db)):
     """Update session with page views and duration."""
-    if not _is_allowed_origin(request.headers.get("origin")):
+    origin = request.headers.get("origin")
+    if not _is_allowed_origin(origin):
+        log_event(
+            db, "forged_origin_blocked", ip_address=get_client_ip(request),
+            user_agent=request.headers.get("user-agent", ""),
+            extra_data={"endpoint": "analytics_session_update", "origin": origin},
+        )
         response.status_code = 204
         return None
 

@@ -1,3 +1,5 @@
+import hmac
+import os
 import re
 import logging
 from collections import defaultdict
@@ -9,7 +11,9 @@ from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 
 from app.database import get_db
+from app.services.client_ip import get_client_ip
 from app.services.email import get_email_service
+from app.services.security_log import log_event
 
 router = APIRouter()
 logger = logging.getLogger("waitlist")
@@ -21,23 +25,20 @@ RATE_LIMIT  = 5
 RATE_WINDOW = timedelta(minutes=10)
 
 
-def _check_rate_limit(ip: str):
+def _check_rate_limit(db: Session, ip: str, user_agent: str, endpoint: str):
     now = datetime.utcnow()
     cutoff = now - RATE_WINDOW
     _rate_store[ip] = [t for t in _rate_store[ip] if t > cutoff]
     if len(_rate_store[ip]) >= RATE_LIMIT:
+        log_event(
+            db, "rate_limit_exceeded", ip_address=ip, user_agent=user_agent,
+            extra_data={"endpoint": endpoint},
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many requests. Please wait a few minutes and try again.",
         )
     _rate_store[ip].append(now)
-
-
-def _get_client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -123,8 +124,9 @@ async def join_waitlist(
     db: Session = Depends(get_db),
 ):
     # Rate limit
-    ip = _get_client_ip(request)
-    _check_rate_limit(ip)
+    ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "")
+    _check_rate_limit(db, ip, user_agent, "early_access_join")
 
     # Extra server-side email validation
     if not data.email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", data.email):
@@ -224,11 +226,19 @@ async def get_waitlist_admin(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    import os
+    ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "")
     admin_secret = os.getenv("ADMIN_SECRET", "")
     provided     = request.headers.get("x-admin-key", "")
 
-    if not admin_secret or provided != admin_secret:
+    authorized = bool(admin_secret) and bool(provided) and hmac.compare_digest(
+        provided.encode("utf-8"), admin_secret.encode("utf-8")
+    )
+    if not authorized:
+        log_event(
+            db, "admin_auth_failed", ip_address=ip, user_agent=user_agent,
+            extra_data={"endpoint": "early_access_admin"},
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized",
