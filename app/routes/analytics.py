@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 from app.config import get_allowed_origins
 from app.database import get_db
-from app.models import VisitorAnalytics, SecurityLog
+from app.models import VisitorAnalytics
 
 router = APIRouter()
 

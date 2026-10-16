@@ -36,7 +36,6 @@ from app.services.pulse_aggregation import (
     build_snapshot,
     visibility_cutoff,
 )
-from app.services.pulse_cooldown import COOLDOWN_HOURS, is_on_cooldown, record_checkin
 
 router = APIRouter()
 
@@ -127,12 +126,6 @@ async def submit_checkin(
     ip = get_client_ip(request)
     _check_rate_limit(ip)
 
-    if is_on_cooldown(db, ip):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"You've already checked in recently. Please try again in up to {COOLDOWN_HOURS} hours.",
-        )
-
     # IP-based geolocation is authoritative when it succeeds (it doesn't
     # depend on the visitor's browser language matching their actual
     # location); the client-reported locale hint is only a fallback for
@@ -151,7 +144,6 @@ async def submit_checkin(
         created_at=datetime.utcnow(),
     )
     db.add(checkin)
-    record_checkin(db, ip)
     db.commit()
 
     _snapshot_cache.clear()

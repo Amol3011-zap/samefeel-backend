@@ -6,14 +6,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from app.routes import auth, users, matching, chats, healers, sessions, meetups, admin
-from app.routes import journey
-from app.routes import challenges
-from app.routes import dashboard
-from app.routes import analytics, consent, privacy
 from app.routes import early_access
 from app.routes import pulse
-from app.routes import soul_climate
+from app.routes import analytics
 from app.config import get_allowed_origins
 from app.database import engine, Base
 
@@ -31,13 +26,6 @@ async def lifespan(app: FastAPI):
     try:
         from app.database import get_engine
         with get_engine().connect() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS age INTEGER"))
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR"))
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR DEFAULT 'user'"))
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS state VARCHAR"))
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS country VARCHAR"))
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR"))
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR"))
             # Waitlist / early access columns
             conn.execute(text("ALTER TABLE early_access_submissions ADD COLUMN IF NOT EXISTS struggle VARCHAR(100)"))
             conn.execute(text("ALTER TABLE early_access_submissions ADD COLUMN IF NOT EXISTS referral_code VARCHAR(100)"))
@@ -52,28 +40,20 @@ async def lifespan(app: FastAPI):
             conn.execute(text(
                 "CREATE INDEX IF NOT EXISTS ix_visitor_analytics_hostname ON visitor_analytics (hostname)"
             ))
-            # Soul Climate daily check-in (reuses user_moods; one per user per local date)
-            conn.execute(text("ALTER TABLE user_moods ADD COLUMN IF NOT EXISTS local_date DATE"))
-            conn.execute(text("ALTER TABLE user_moods ADD COLUMN IF NOT EXISTS timezone VARCHAR(64)"))
-            conn.execute(text("ALTER TABLE user_moods ADD COLUMN IF NOT EXISTS source VARCHAR(20)"))
-            conn.execute(text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS ux_user_moods_daily_checkin "
-                "ON user_moods (user_id, local_date) WHERE source = 'soul_climate'"
-            ))
             conn.commit()
         print("Column migrations complete!")
     except Exception as e:
         print(f"Migration note: {e}")
-    print("SoulConnect API started successfully!")
+    print("SameFeel API started successfully!")
     yield
-    print("SoulConnect API shutting down...")
+    print("SameFeel API shutting down...")
 
 
 _debug = os.getenv("DEBUG", "False").lower() in ("true", "1")
 
 app = FastAPI(
-    title="SoulConnect API",
-    description="Problem-solver peer support + healer platform",
+    title="SameFeel API",
+    description="Early access, Global Pulse check-ins, and visitor analytics",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs" if _debug else None,
@@ -91,28 +71,14 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-Admin-Key"],
 )
 
-app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(users.router, prefix="/api/users", tags=["Users"])
-app.include_router(matching.router, prefix="/api/matches", tags=["Matching"])
-app.include_router(chats.router, prefix="/api/chats", tags=["Chat"])
-app.include_router(healers.router, prefix="/api/healers", tags=["Healers"])
-app.include_router(sessions.router, prefix="/api/sessions", tags=["Sessions"])
-app.include_router(meetups.router, prefix="/api/meetups", tags=["Meetups"])
-app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
-app.include_router(journey.router, prefix="/api/journey", tags=["Soul Journey"])
-app.include_router(challenges.router, prefix="/api/challenges", tags=["Daily Challenges"])
-app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
-app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
-app.include_router(consent.router, prefix="/api/consent", tags=["Consent"])
-app.include_router(privacy.router, prefix="/api/privacy", tags=["Privacy & GDPR"])
 app.include_router(early_access.router, prefix="/api/early-access", tags=["Early Access"])
 app.include_router(pulse.router, prefix="/api/pulse", tags=["Global Pulse"])
-app.include_router(soul_climate.router, prefix="/api/soul-climate", tags=["Soul Climate"])
+app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 
 
 @app.get("/")
 async def root():
-    return {"message": "SoulConnect API", "status": "running", "docs": "/docs"}
+    return {"message": "SameFeel API", "status": "running", "docs": "/docs"}
 
 
 @app.get("/health")
