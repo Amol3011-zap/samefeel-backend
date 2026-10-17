@@ -215,7 +215,7 @@ td {{ padding: 0; }}
 <tbody>
 <tr>
 <td align="center" bgcolor="#F5F1FB" style="background-color: #F5F1FB; border-radius: 12px; padding: 18px 24px;">
-<p style="font-size: 16px; font-style: italic; color: #4B2E83; font-weight: 600; margin: 0; line-height: 1.6; text-align: center; font-family: Arial, Helvetica, sans-serif;">"You don't have to go through life's challenges alone."</p>
+<p style="font-size: 16px; font-style: italic; color: #4B2E83; font-weight: 600; margin: 0; line-height: 1.6; text-align: center; font-family: Arial, Helvetica, sans-serif;">"You don't have to go through life's challenges alone." Sometimes, you just need someone who gets it</p>
 </td>
 </tr>
 </tbody>
